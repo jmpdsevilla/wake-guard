@@ -1,0 +1,176 @@
+#!/bin/bash
+
+# Wake Guard Configuration Script
+# Permite configurar Wake Guard después de la instalación
+
+CONFIG_FILE="$HOME/.wake-guard/config"
+WAKEUP_SCRIPT="$HOME/.wakeup"
+
+# Verificar que Wake Guard esté instalado
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "❌ Error: Wake Guard no está instalado."
+    echo "Ejecuta el instalador primero: ./install.sh"
+    exit 1
+fi
+
+# Leer configuración actual
+source "$CONFIG_FILE"
+
+DELAY=${DELAY:-3}
+OUTPUT_DIR=${OUTPUT_DIR:-"$HOME/Library/Mobile Documents/com~apple~CloudDocs/WakeGuard"}
+
+echo "🔧 Wake Guard - Configuración"
+echo "============================="
+echo
+echo "Configuración actual:"
+echo "- Carpeta de destino: $OUTPUT_DIR"
+echo "- Delay: $DELAY segundos"
+echo
+
+# Menú principal
+while true; do
+    echo "¿Qué deseas configurar?"
+    echo "1) Cambiar carpeta de destino"
+    echo "2) Cambiar delay de captura"
+    echo "3) Ver estado del servicio"
+    echo "4) Ver logs recientes"
+    echo "5) Probar captura manual"
+    echo "6) Salir"
+    echo
+    read -p "Selecciona opción [6]: " OPTION
+    OPTION=${OPTION:-6}
+    
+    case $OPTION in
+        1)
+            echo
+            echo "📁 Configurar carpeta de destino"
+            echo "1) iCloud Drive"
+            echo "2) Escritorio"
+            echo "3) Documentos"
+            echo "4) Carpeta personalizada"
+            echo "5) Mantener actual"
+            echo
+            read -p "Selecciona opción [5]: " FOLDER_OPTION
+            FOLDER_OPTION=${FOLDER_OPTION:-5}
+
+            case $FOLDER_OPTION in
+                1)
+                    NEW_OUTPUT_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/WakeGuard"
+                    ;;
+                2)
+                    NEW_OUTPUT_DIR="$HOME/Desktop/WakeGuard"
+                    ;;
+                3)
+                    NEW_OUTPUT_DIR="$HOME/Documents/WakeGuard"
+                    ;;
+                4)
+                    read -p "Introduce la ruta completa: " CUSTOM_PATH
+                    if [[ -z "$CUSTOM_PATH" ]]; then
+                        echo "❌ Ruta vacía, manteniendo configuración actual"
+                        NEW_OUTPUT_DIR="$OUTPUT_DIR"
+                    else
+                        NEW_OUTPUT_DIR="${CUSTOM_PATH}/WakeGuard"
+                    fi
+                    ;;
+                5)
+                    NEW_OUTPUT_DIR="$OUTPUT_DIR"
+                    ;;
+                *)
+                    NEW_OUTPUT_DIR="$OUTPUT_DIR"
+                    ;;
+            esac
+            
+            OUTPUT_DIR="$NEW_OUTPUT_DIR"
+            mkdir -p "$OUTPUT_DIR"
+            echo "✅ Carpeta actualizada: $OUTPUT_DIR"
+            ;;
+            
+        2)
+            echo
+            read -p "Nuevo delay antes de tomar foto (segundos) [$DELAY]: " NEW_DELAY
+            if [[ "$NEW_DELAY" =~ ^[0-9]+$ ]] && [[ "$NEW_DELAY" -ge 0 ]]; then
+                DELAY=$NEW_DELAY
+                echo "✅ Delay actualizado: $DELAY segundos"
+            else
+                echo "❌ Valor inválido, manteniendo delay actual: $DELAY segundos"
+            fi
+            ;;
+            
+        3)
+            echo
+            echo "📊 Estado del servicio"
+            echo "====================="
+            LAUNCH_AGENT="$HOME/Library/LaunchAgents/de.bernhard-baehr.sleepwatcher-20compatibility-localuser.plist"
+            if [[ -f "$LAUNCH_AGENT" ]]; then
+                if launchctl list | grep -q "sleepwatcher"; then
+                    echo "✅ SleepWatcher está ejecutándose"
+                else
+                    echo "⚠️  SleepWatcher no está ejecutándose"
+                    echo "Intenta: launchctl load '$LAUNCH_AGENT'"
+                fi
+            else
+                echo "❌ LaunchAgent no encontrado"
+            fi
+            
+            if [[ -f "$WAKEUP_SCRIPT" ]]; then
+                echo "✅ Script wakeup existe"
+            else
+                echo "❌ Script wakeup no encontrado"
+            fi
+            
+            if command -v imagesnap &> /dev/null; then
+                echo "✅ ImageSnap instalado"
+            else
+                echo "❌ ImageSnap no encontrado"
+            fi
+            ;;
+            
+        4)
+            echo
+            echo "📋 Logs recientes (últimas 20 líneas)"
+            echo "====================================="
+            LOG_FILE="$HOME/Library/Logs/wake-guard.log"
+            if [[ -f "$LOG_FILE" ]]; then
+                tail -20 "$LOG_FILE"
+            else
+                echo "No hay logs disponibles"
+            fi
+            ;;
+            
+        5)
+            echo
+            echo "📸 Probando captura manual..."
+            PHOTO_NAME="test_$(date +'%Y-%m-%d_%H-%M-%S').jpg"
+            if imagesnap -q "$OUTPUT_DIR/$PHOTO_NAME"; then
+                echo "✅ Foto de prueba capturada: $PHOTO_NAME"
+                echo "📁 Ubicación: $OUTPUT_DIR"
+            else
+                echo "❌ Error capturando foto de prueba"
+                echo "Verifica los permisos de cámara en Configuración del Sistema"
+            fi
+            ;;
+            
+        6)
+            break
+            ;;
+            
+        *)
+            echo "❌ Opción inválida"
+            ;;
+    esac
+    
+    echo
+done
+
+# Guardar configuración actualizada
+cat > "$CONFIG_FILE" << EOF
+# Wake Guard Configuration
+OUTPUT_DIR="$OUTPUT_DIR"
+DELAY=$DELAY
+EOF
+
+echo "✅ Configuración guardada:"
+echo "- Carpeta de destino: $OUTPUT_DIR"
+echo "- Delay: $DELAY segundos"
+echo
+echo "Los cambios se aplicarán en el próximo despertar del Mac."

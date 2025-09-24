@@ -1,0 +1,34 @@
+#!/bin/zsh
+set -e
+
+# Wake Guard - Script de despertar
+# Este script se ejecuta automáticamente cuando el Mac despierta del modo sleep
+
+LOG="$HOME/Library/Logs/wake-guard.log"
+CONFIG_FILE="$HOME/.wake-guard/config"
+
+# Cargar configuración
+if [[ -f "$CONFIG_FILE" ]]; then
+    source "$CONFIG_FILE"
+fi
+
+# Valores por defecto si no están configurados
+OUTDIR=${OUTPUT_DIR:-"{{OUTPUT_DIR}}"}
+DELAY=${DELAY:-{{DELAY}}}
+
+# Crear directorio si no existe
+mkdir -p "$OUTDIR"
+
+# Log del evento
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Wake Guard: Mac despertó" >> "$LOG"
+
+# Esperar delay configurado
+sleep $DELAY
+
+# Tomar foto
+PHOTO_NAME="wake_$(date +'%Y-%m-%d_%H-%M-%S').jpg"
+if imagesnap -q "$OUTDIR/$PHOTO_NAME" >> "$LOG" 2>&1; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Wake Guard: Foto capturada - $PHOTO_NAME" >> "$LOG"
+else
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - Wake Guard: Error capturando foto" >> "$LOG"
+fi

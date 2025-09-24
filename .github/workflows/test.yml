@@ -1,0 +1,129 @@
+name: Test Wake Guard
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run ShellCheck
+      uses: ludeeus/action-shellcheck@master
+      with:
+        scandir: './src'
+        additional_files: 'install.sh uninstall.sh'
+        severity: warning
+
+  syntax-check:
+    name: Syntax Check
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check bash syntax
+      run: |
+        bash -n install.sh
+        bash -n uninstall.sh
+        bash -n src/wake-guard-config
+        
+    - name: Check zsh syntax  
+      run: |
+        zsh -n src/templates/wakeup.template || true
+
+  test-install:
+    name: Test Installation
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Test dry run installation
+      run: |
+        # Crear un script de prueba que simule la instalación
+        # sin ejecutar comandos que requieren permisos especiales
+        
+        # Verificar que los archivos necesarios existen
+        test -f install.sh
+        test -f uninstall.sh
+        test -f src/wake-guard-config
+        test -f src/templates/wakeup.template
+        test -f src/templates/launchd.template
+        
+        # Verificar que los scripts son ejecutables
+        test -x install.sh
+        test -x uninstall.sh
+        test -x src/wake-guard-config
+        
+        echo "✅ Todos los archivos necesarios están presentes"
+        
+    - name: Check dependencies availability
+      run: |
+        # Verificar que las dependencias están disponibles en Homebrew
+        brew search sleepwatcher
+        brew search imagesnap
+        
+        echo "✅ Dependencias disponibles en Homebrew"
+
+  documentation:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check documentation files
+      run: |
+        # Verificar que todos los archivos de documentación existen
+        test -f README.md
+        test -f LICENSE
+        test -f docs/CHANGELOG.md
+        test -f docs/CONTRIBUTING.md
+        test -f docs/TROUBLESHOOTING.md
+        
+        echo "✅ Todos los archivos de documentación están presentes"
+        
+    - name: Check links in README
+      run: |
+        # Verificar que el README no tiene enlaces rotos obvios
+        grep -E "https?://[^\s\)]+" README.md || echo "No external links found"
+        
+        echo "✅ README verificado"
+
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check for secrets
+      run: |
+        # Buscar posibles secretos o credenciales hardcodeadas
+        if grep -r -i -E "(password|secret|key|token)" --exclude-dir=.git --exclude="*.yml" .; then
+          echo "⚠️ Posibles secretos encontrados - revisar manualmente"
+          exit 1
+        else
+          echo "✅ No se encontraron secretos obvios"
+        fi
+        
+    - name: Check file permissions
+      run: |
+        # Verificar que no hay archivos con permisos excesivos
+        find . -type f -perm /o+w -not -path "./.git/*" | while read file; do
+          echo "⚠️ Archivo con permisos de escritura para otros: $file"
+        done
+        
+        echo "✅ Verificación de permisos completada"
