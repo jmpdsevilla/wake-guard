@@ -13,24 +13,28 @@ Herramienta de seguridad para macOS que **detecta automáticamente cuando alguie
 
 **Todo sucede en segundos, de forma invisible y sin alertar al intruso.**
 
-## Instalación Rápida
+## 🚀 Instalación
 
+### Método 1: Instalación Rápida (Automática)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jmpdsevilla/wake-guard/main/install.sh | bash
 ```
+- ✅ **Instalación inmediata** sin preguntas
+- ✅ **Valores por defecto**: iCloud Drive + 3 segundos de delay
+- ⚡ **Recomendado** para la mayoría de usuarios
 
-## Instalación Manual
-
-1. Clona el repositorio:
+### Método 2: Instalación Personalizada (Interactiva)
 ```bash
 git clone https://github.com/jmpdsevilla/wake-guard.git
 cd wake-guard
-```
-
-2. Ejecuta el instalador:
-```bash
 ./install.sh
 ```
+- ✅ **Configuración personalizada** durante la instalación
+- ✅ **Elección de carpeta** (iCloud, Escritorio, Documentos, personalizada)
+- ✅ **Delay configurable** (segundos antes de tomar foto)
+- 🔧 **Recomendado** si quieres personalizar la configuración
+
+> **💡 Tip:** Si usaste la instalación rápida, siempre puedes personalizar la configuración después ejecutando `wake-guard-config`
 
 ## Características Principales
 

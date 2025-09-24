@@ -7,6 +7,16 @@ set -euo pipefail
 INSTALL_DIR="$HOME/.wake-guard"
 LOG_FILE="$HOME/Library/Logs/wake-guard.log"
 
+# Detectar método de instalación
+INTERACTIVE_MODE=true
+if [ ! -t 0 ]; then
+    INTERACTIVE_MODE=false
+    echo "🔄 Instalación automática (curl) detectada"
+    echo "📝 Se usarán valores por defecto. Para configuración personalizada:"
+    echo "   git clone https://github.com/jmpdsevilla/wake-guard.git && cd wake-guard && ./install.sh"
+    echo
+fi
+
 echo "🔧 Instalando Wake Guard..."
 
 # Verificar macOS
@@ -15,17 +25,23 @@ if [[ "$(uname)" != "Darwin" ]]; then
     exit 1
 fi
 
-# Configuración interactiva de carpeta de destino
+# Configuración de carpeta de destino
 echo "📁 Configuración de carpeta de destino"
 echo "======================================"
-echo "¿Dónde deseas guardar las fotos capturadas?"
-echo "1) iCloud Drive (por defecto)"
-echo "2) Escritorio"
-echo "3) Documentos"
-echo "4) Carpeta personalizada"
-echo
-read -p "Selecciona opción [1]: " FOLDER_OPTION
-FOLDER_OPTION=${FOLDER_OPTION:-1}
+
+if [[ "$INTERACTIVE_MODE" == true ]]; then
+    echo "¿Dónde deseas guardar las fotos capturadas?"
+    echo "1) iCloud Drive (por defecto)"
+    echo "2) Escritorio"
+    echo "3) Documentos"
+    echo "4) Carpeta personalizada"
+    echo
+    read -p "Selecciona opción [1]: " FOLDER_OPTION < /dev/tty
+    FOLDER_OPTION=${FOLDER_OPTION:-1}
+else
+    echo "🔄 Modo automático: Usando iCloud Drive por defecto"
+    FOLDER_OPTION=1
+fi
 
 case $FOLDER_OPTION in
     1)
@@ -41,9 +57,15 @@ case $FOLDER_OPTION in
         echo "📁 Seleccionado: Documentos/WakeGuard"
         ;;
     4)
-        read -p "Introduce la ruta completa: " CUSTOM_PATH
-        ICLOUD_DIR="${CUSTOM_PATH}/WakeGuard"
-        echo "📁 Seleccionado: $ICLOUD_DIR"
+        if [[ "$INTERACTIVE_MODE" == true ]]; then
+            read -p "Introduce la ruta completa: " CUSTOM_PATH < /dev/tty
+            ICLOUD_DIR="${CUSTOM_PATH}/WakeGuard"
+            echo "📁 Seleccionado: $ICLOUD_DIR"
+        else
+            # En modo automático, fallback a iCloud Drive
+            ICLOUD_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/WakeGuard"
+            echo "📁 Modo automático: Usando iCloud Drive por defecto"
+        fi
         ;;
     *)
         ICLOUD_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/WakeGuard"
@@ -55,8 +77,14 @@ esac
 echo
 echo "⏱️  Configuración de delay"
 echo "========================="
-read -p "Delay antes de tomar foto (segundos) [3]: " DELAY_CONFIG
-DELAY_CONFIG=${DELAY_CONFIG:-3}
+
+if [[ "$INTERACTIVE_MODE" == true ]]; then
+    read -p "Delay antes de tomar foto (segundos) [3]: " DELAY_CONFIG < /dev/tty
+    DELAY_CONFIG=${DELAY_CONFIG:-3}
+else
+    echo "🔄 Modo automático: Usando delay de 3 segundos por defecto"
+    DELAY_CONFIG=3
+fi
 
 # Crear directorios necesarios
 mkdir -p "$INSTALL_DIR"
@@ -126,9 +154,8 @@ chmod +x "$HOME/.wakeup"
 # Crear script de configuración
 sudo mkdir -p /usr/local/bin
 
-# Crear archivo temporal y moverlo con sudo
-TEMP_CONFIG=$(mktemp)
-cat > "$TEMP_CONFIG" << 'EOF'
+# Usar método más robusto con tee
+sudo tee /usr/local/bin/wake-guard-config > /dev/null << 'EOF'
 #!/bin/bash
 
 CONFIG_FILE="$HOME/.wake-guard/config"
@@ -206,7 +233,6 @@ echo
 echo "Los cambios se aplicarán en el próximo despertar del Mac."
 EOF
 
-sudo mv "$TEMP_CONFIG" /usr/local/bin/wake-guard-config
 sudo chmod +x /usr/local/bin/wake-guard-config
 
 # Detectar ubicación de SleepWatcher
@@ -386,4 +412,12 @@ echo "1. Cierra tu MacBook completamente (suspensión)"
 echo "2. Ábrelo después de unos segundos"
 echo "3. Verifica que se creó una nueva foto en: $ICLOUD_DIR"
 echo
+
+if [[ "$INTERACTIVE_MODE" != true ]]; then
+    echo "💡 Personalización post-instalación:"
+    echo "- Para cambiar la carpeta de destino o delay: wake-guard-config"
+    echo "- Para ver configuración actual: cat ~/.wake-guard/config"
+    echo
+fi
+
 echo "⚠️  Recuerda: Wake Guard respeta tu privacidad - todas las fotos se guardan localmente."
