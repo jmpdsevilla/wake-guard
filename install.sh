@@ -125,7 +125,10 @@ chmod +x "$HOME/.wakeup"
 
 # Crear script de configuración
 sudo mkdir -p /usr/local/bin
-sudo cat > "/usr/local/bin/wake-guard-config" << 'EOF'
+
+# Crear archivo temporal y moverlo con sudo
+TEMP_CONFIG=$(mktemp)
+cat > "$TEMP_CONFIG" << 'EOF'
 #!/bin/bash
 
 CONFIG_FILE="$HOME/.wake-guard/config"
@@ -203,13 +206,47 @@ echo
 echo "Los cambios se aplicarán en el próximo despertar del Mac."
 EOF
 
-sudo chmod +x "/usr/local/bin/wake-guard-config"
+sudo mv "$TEMP_CONFIG" /usr/local/bin/wake-guard-config
+sudo chmod +x /usr/local/bin/wake-guard-config
+
+# Detectar ubicación de SleepWatcher
+echo "🔍 Detectando ubicación de SleepWatcher..."
+SLEEPWATCHER_PATH=""
+
+# Posibles ubicaciones de sleepwatcher
+POSSIBLE_PATHS=(
+    "/opt/homebrew/sbin/sleepwatcher"    # Apple Silicon por defecto
+    "/usr/local/sbin/sleepwatcher"       # Intel por defecto
+    "/opt/homebrew/bin/sleepwatcher"     # Alternativa Apple Silicon
+    "/usr/local/bin/sleepwatcher"        # Alternativa Intel
+)
+
+for path in "${POSSIBLE_PATHS[@]}"; do
+    if [[ -x "$path" ]]; then
+        SLEEPWATCHER_PATH="$path"
+        echo "✅ SleepWatcher encontrado en: $SLEEPWATCHER_PATH"
+        break
+    fi
+done
+
+# Si no se encuentra en ubicaciones conocidas, usar which
+if [[ -z "$SLEEPWATCHER_PATH" ]]; then
+    if SLEEPWATCHER_PATH=$(which sleepwatcher 2>/dev/null); then
+        echo "✅ SleepWatcher encontrado en: $SLEEPWATCHER_PATH"
+    else
+        echo "❌ Error: No se pudo encontrar SleepWatcher después de la instalación"
+        echo "Verifica que Homebrew instaló correctamente las dependencias"
+        exit 1
+    fi
+fi
 
 # Configurar LaunchAgent para SleepWatcher
 LAUNCH_AGENT_DIR="$HOME/Library/LaunchAgents"
 mkdir -p "$LAUNCH_AGENT_DIR"
 
-cat > "$LAUNCH_AGENT_DIR/de.bernhard-baehr.sleepwatcher-20compatibility-localuser.plist" << EOF
+LAUNCH_AGENT_FILE="$LAUNCH_AGENT_DIR/de.bernhard-baehr.sleepwatcher-20compatibility-localuser.plist"
+
+cat > "$LAUNCH_AGENT_FILE" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -218,7 +255,7 @@ cat > "$LAUNCH_AGENT_DIR/de.bernhard-baehr.sleepwatcher-20compatibility-localuse
     <string>de.bernhard-baehr.sleepwatcher-20compatibility-localuser</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/homebrew/sbin/sleepwatcher</string>
+        <string>$SLEEPWATCHER_PATH</string>
         <string>-V</string>
         <string>-w</string>
         <string>$HOME/.wakeup</string>
@@ -227,17 +264,75 @@ cat > "$LAUNCH_AGENT_DIR/de.bernhard-baehr.sleepwatcher-20compatibility-localuse
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>StandardOutPath</key>
+    <string>$HOME/Library/Logs/wake-guard.log</string>
+    <key>StandardErrorPath</key>
+    <string>$HOME/Library/Logs/wake-guard.log</string>
 </dict>
 </plist>
 EOF
 
-# Ajustar ruta para Intel Macs
-if [[ ! -f "/opt/homebrew/sbin/sleepwatcher" ]] && [[ -f "/usr/local/sbin/sleepwatcher" ]]; then
-    sed -i '' 's|/opt/homebrew/sbin/sleepwatcher|/usr/local/sbin/sleepwatcher|g' "$LAUNCH_AGENT_DIR/de.bernhard-baehr.sleepwatcher-20compatibility-localuser.plist"
+echo "✅ LaunchAgent creado: $LAUNCH_AGENT_FILE"
+
+# Cargar LaunchAgent con manejo de errores
+echo "🔄 Cargando LaunchAgent..."
+
+# Descargar cualquier instancia previa
+launchctl unload "$LAUNCH_AGENT_FILE" 2>/dev/null || true
+
+# Cargar el nuevo LaunchAgent
+if launchctl load "$LAUNCH_AGENT_FILE"; then
+    echo "✅ LaunchAgent cargado correctamente"
+else
+    echo "❌ Error cargando LaunchAgent"
+    echo "Intentando cargar manualmente..."
+
+    # Forzar la carga
+    launchctl bootstrap gui/$(id -u) "$LAUNCH_AGENT_FILE" 2>/dev/null || launchctl load "$LAUNCH_AGENT_FILE"
 fi
 
-# Cargar LaunchAgent
-launchctl load "$LAUNCH_AGENT_DIR/de.bernhard-baehr.sleepwatcher-20compatibility-localuser.plist"
+# Esperar un momento para que se inicie
+sleep 2
+
+# Verificación post-instalación
+echo "🔍 Verificando instalación..."
+
+# Verificar que SleepWatcher está ejecutándose
+SLEEPWATCHER_RUNNING=false
+if launchctl list | grep -q "sleepwatcher"; then
+    echo "✅ SleepWatcher se está ejecutando"
+    SLEEPWATCHER_RUNNING=true
+else
+    echo "⚠️  SleepWatcher no parece estar ejecutándose"
+    echo "Intentando iniciarlo manualmente..."
+
+    # Intentar iniciar manualmente
+    "$SLEEPWATCHER_PATH" -V -w "$HOME/.wakeup" &
+    SLEEPWATCHER_PID=$!
+    sleep 1
+    if kill -0 $SLEEPWATCHER_PID 2>/dev/null; then
+        echo "✅ SleepWatcher iniciado manualmente"
+        SLEEPWATCHER_RUNNING=true
+    fi
+fi
+
+# Verificar archivos críticos
+CRITICAL_FILES=(
+    "$HOME/.wakeup"
+    "$INSTALL_DIR/config"
+    "$LAUNCH_AGENT_FILE"
+    "/usr/local/bin/wake-guard-config"
+)
+
+ALL_FILES_OK=true
+for file in "${CRITICAL_FILES[@]}"; do
+    if [[ -f "$file" ]]; then
+        echo "✅ Archivo crítico existe: $(basename "$file")"
+    else
+        echo "❌ Archivo crítico faltante: $file"
+        ALL_FILES_OK=false
+    fi
+done
 
 # Log inicial
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Wake Guard: Instalación completada" >> "$LOG_FILE"
@@ -257,16 +352,38 @@ else
 fi
 
 echo
-echo "✅ Wake Guard instalado correctamente!"
+echo "==============================================="
+if [[ "$SLEEPWATCHER_RUNNING" == true && "$ALL_FILES_OK" == true ]]; then
+    echo "🎉 Wake Guard instalado y funcionando correctamente!"
+    echo "🛡️  Tu MacBook está ahora protegido contra accesos no autorizados."
+else
+    echo "⚠️  Wake Guard instalado con advertencias"
+    if [[ "$SLEEPWATCHER_RUNNING" != true ]]; then
+        echo "❌ SleepWatcher no se está ejecutando automáticamente"
+        echo "   Intenta reiniciar el sistema o ejecutar: launchctl load ~/Library/LaunchAgents/de.bernhard-baehr.sleepwatcher-20compatibility-localuser.plist"
+    fi
+    if [[ "$ALL_FILES_OK" != true ]]; then
+        echo "❌ Algunos archivos críticos no se crearon correctamente"
+        echo "   Considera reinstalar Wake Guard"
+    fi
+fi
+echo "==============================================="
 echo
-echo "📋 Información importante:"
-echo "- Las fotos se guardarán en: $ICLOUD_DIR"
-echo "- Delay configurado: $DELAY_CONFIG segundos"
-echo "- Logs en: $LOG_FILE"
+echo "📋 Configuración actual:"
+echo "- Carpeta de destino: $ICLOUD_DIR"
+echo "- Delay de captura: $DELAY_CONFIG segundos"
+echo "- Archivo de logs: $LOG_FILE"
+echo "- SleepWatcher: $SLEEPWATCHER_PATH"
 echo
 echo "🔧 Comandos útiles:"
 echo "- Configurar: wake-guard-config"
 echo "- Ver logs: tail -f ~/Library/Logs/wake-guard.log"
+echo "- Ver estado: launchctl list | grep sleepwatcher"
 echo "- Desinstalar: curl -fsSL https://raw.githubusercontent.com/jmpdsevilla/wake-guard/main/uninstall.sh | bash"
 echo
-echo "⚠️  Nota: Es posible que macOS solicite permisos de cámara la primera vez."
+echo "🧪 Probar funcionamiento:"
+echo "1. Cierra tu MacBook completamente (suspensión)"
+echo "2. Ábrelo después de unos segundos"
+echo "3. Verifica que se creó una nueva foto en: $ICLOUD_DIR"
+echo
+echo "⚠️  Recuerda: Wake Guard respeta tu privacidad - todas las fotos se guardan localmente."

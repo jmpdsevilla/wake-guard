@@ -60,30 +60,49 @@ echo
 # Verificar dependencias
 echo "📦 Dependencias:"
 
-# SleepWatcher
-if command -v sleepwatcher &> /dev/null; then
-    echo "✅ SleepWatcher instalado: $(which sleepwatcher)"
-else
-    echo "❌ SleepWatcher no instalado"
-    echo "ℹ️  Se instalará automáticamente"
+# SleepWatcher con detección de rutas
+SLEEPWATCHER_FOUND=false
+POSSIBLE_SLEEPWATCHER_PATHS=(
+    "/opt/homebrew/sbin/sleepwatcher"
+    "/usr/local/sbin/sleepwatcher"
+    "/opt/homebrew/bin/sleepwatcher"
+    "/usr/local/bin/sleepwatcher"
+)
+
+for path in "${POSSIBLE_SLEEPWATCHER_PATHS[@]}"; do
+    if [[ -x "$path" ]]; then
+        echo "✅ SleepWatcher encontrado: $path"
+        SLEEPWATCHER_FOUND=true
+        break
+    fi
+done
+
+if [[ "$SLEEPWATCHER_FOUND" != true ]]; then
+    if command -v sleepwatcher &> /dev/null; then
+        echo "✅ SleepWatcher instalado: $(which sleepwatcher)"
+    else
+        echo "❌ SleepWatcher no instalado"
+        echo "ℹ️  Se instalará automáticamente durante la instalación"
+    fi
 fi
 
 # ImageSnap
 if command -v imagesnap &> /dev/null; then
     echo "✅ ImageSnap instalado: $(which imagesnap)"
-    
+
     # Probar ImageSnap
-    echo "🧪 Probando ImageSnap..."
+    echo "🧪 Probando acceso a cámara con ImageSnap..."
     TEST_FILE="/tmp/wake_guard_test.jpg"
     if imagesnap -q "$TEST_FILE" 2>/dev/null; then
-        echo "✅ ImageSnap funciona correctamente"
+        echo "✅ ImageSnap funciona correctamente - cámara accesible"
         rm -f "$TEST_FILE"
     else
-        echo "⚠️  ImageSnap instalado pero no funciona (posible problema de permisos)"
+        echo "⚠️  ImageSnap instalado pero no puede acceder a la cámara"
+        echo "   Esto es normal si aún no has autorizado permisos de cámara"
     fi
 else
     echo "❌ ImageSnap no instalado"
-    echo "ℹ️  Se instalará automáticamente"
+    echo "ℹ️  Se instalará automáticamente durante la instalación"
 fi
 
 echo
